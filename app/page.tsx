@@ -37,6 +37,7 @@ const quick = [
   "Queso",
   "Fideos",
 ];
+const SAVED_RECIPES_PER_PAGE = 6;
 const loginSlides = [
   {
     image: "/login-family.jpg",
@@ -98,6 +99,7 @@ export default function Home() {
     [savedMeal, setSavedMeal] = useState("Todas"),
     [savedDiet, setSavedDiet] = useState("Todas"),
     [savedSort, setSavedSort] = useState("recent"),
+    [savedPage, setSavedPage] = useState(1),
     resultsRef = useRef<HTMLElement>(null);
   const [loginSlide, setLoginSlide] = useState(0);
 
@@ -431,6 +433,54 @@ export default function Home() {
         ? a.name.localeCompare(b.name, "es")
         : b.savedAt.localeCompare(a.savedAt),
     );
+  const savedPageCount = Math.max(
+    1,
+    Math.ceil(visibleSavedRecipes.length / SAVED_RECIPES_PER_PAGE),
+  );
+  const currentSavedPage = Math.min(savedPage, savedPageCount);
+  const paginatedSavedRecipes = visibleSavedRecipes.slice(
+    (currentSavedPage - 1) * SAVED_RECIPES_PER_PAGE,
+    currentSavedPage * SAVED_RECIPES_PER_PAGE,
+  );
+  const savedPaginationItems: Array<number | "start" | "end"> =
+    savedPageCount <= 7
+      ? Array.from({ length: savedPageCount }, (_, index) => index + 1)
+      : currentSavedPage <= 4
+        ? [1, 2, 3, 4, 5, "end", savedPageCount]
+        : currentSavedPage >= savedPageCount - 3
+          ? [
+              1,
+              "start",
+              savedPageCount - 4,
+              savedPageCount - 3,
+              savedPageCount - 2,
+              savedPageCount - 1,
+              savedPageCount,
+            ]
+          : [
+              1,
+              "start",
+              currentSavedPage - 1,
+              currentSavedPage,
+              currentSavedPage + 1,
+              "end",
+              savedPageCount,
+            ];
+
+  useEffect(() => {
+    setSavedPage(1);
+  }, [savedSearch, savedMeal, savedDiet, savedSort]);
+  useEffect(() => {
+    setSavedPage((page) => Math.min(page, savedPageCount));
+  }, [savedPageCount]);
+
+  function goToSavedPage(page: number) {
+    setSavedPage(Math.min(Math.max(1, page), savedPageCount));
+    document.getElementById("guardadas")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
 
   if (!authReady)
     return (
@@ -1051,47 +1101,109 @@ export default function Home() {
             </div>
 
             {visibleSavedRecipes.length > 0 ? (
-              <div className="saved-grid">
-                {visibleSavedRecipes.map((recipe) => (
-                  <article className="saved-card" key={recipe.id}>
-                    <div className="saved-card-top">
-                      <span className="saved-emoji">
-                        {recipe.emoji || "🍽️"}
-                      </span>
-                      <div className="saved-card-actions">
-                        <button
-                          type="button"
-                          onClick={() => toggleSaved(recipe, recipe)}
-                          aria-label={`Quitar ${recipe.name} de mis recetas`}
-                        >
-                          Quitar
-                        </button>
+              <>
+                <div className="saved-grid">
+                  {paginatedSavedRecipes.map((recipe) => (
+                    <article className="saved-card" key={recipe.id}>
+                      <div className="saved-card-top">
+                        <span className="saved-emoji">
+                          {recipe.emoji || "🍽️"}
+                        </span>
+                        <div className="saved-card-actions">
+                          <button
+                            type="button"
+                            onClick={() => toggleSaved(recipe, recipe)}
+                            aria-label={`Quitar ${recipe.name} de mis recetas`}
+                          >
+                            Quitar
+                          </button>
+                        </div>
                       </div>
+                      <div className="saved-tags">
+                        <span>{recipe.mealCategory}</span>
+                        <span>{recipe.dietCategory}</span>
+                      </div>
+                      <h3>{recipe.name}</h3>
+                      <p>{recipe.summary}</p>
+                      <div className="saved-card-meta">
+                        <span>◷ {recipe.minutes} min</span>
+                        <span>♙ {recipe.servings}</span>
+                        <span>
+                          Guardada el{" "}
+                          {new Date(recipe.savedAt).toLocaleDateString("es-AR")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="open saved-open"
+                        onClick={() => setSelected(recipe)}
+                      >
+                        Abrir receta <span>→</span>
+                      </button>
+                    </article>
+                  ))}
+                </div>
+                {savedPageCount > 1 && (
+                  <nav
+                    className="saved-pagination"
+                    aria-label="Páginas de recetas guardadas"
+                  >
+                    <p>
+                      Mostrando{" "}
+                      <b>
+                        {(currentSavedPage - 1) * SAVED_RECIPES_PER_PAGE + 1}–
+                        {Math.min(
+                          currentSavedPage * SAVED_RECIPES_PER_PAGE,
+                          visibleSavedRecipes.length,
+                        )}
+                      </b>{" "}
+                      de {visibleSavedRecipes.length}
+                    </p>
+                    <div>
+                      <button
+                        type="button"
+                        className="pagination-step"
+                        disabled={currentSavedPage === 1}
+                        onClick={() => goToSavedPage(currentSavedPage - 1)}
+                        aria-label="Página anterior"
+                      >
+                        ← <span>Anterior</span>
+                      </button>
+                      {savedPaginationItems.map((item) =>
+                        typeof item === "number" ? (
+                          <button
+                            type="button"
+                            key={item}
+                            className={
+                              item === currentSavedPage ? "active" : ""
+                            }
+                            onClick={() => goToSavedPage(item)}
+                            aria-label={`Ir a la página ${item}`}
+                            aria-current={
+                              item === currentSavedPage ? "page" : undefined
+                            }
+                          >
+                            {item}
+                          </button>
+                        ) : (
+                          <span className="pagination-ellipsis" key={item}>
+                            …
+                          </span>
+                        ),
+                      )}
+                      <button
+                        type="button"
+                        className="pagination-step"
+                        disabled={currentSavedPage === savedPageCount}
+                        onClick={() => goToSavedPage(currentSavedPage + 1)}
+                        aria-label="Página siguiente"
+                      >
+                        <span>Siguiente</span> →
+                      </button>
                     </div>
-                    <div className="saved-tags">
-                      <span>{recipe.mealCategory}</span>
-                      <span>{recipe.dietCategory}</span>
-                    </div>
-                    <h3>{recipe.name}</h3>
-                    <p>{recipe.summary}</p>
-                    <div className="saved-card-meta">
-                      <span>◷ {recipe.minutes} min</span>
-                      <span>♙ {recipe.servings}</span>
-                      <span>
-                        Guardada el{" "}
-                        {new Date(recipe.savedAt).toLocaleDateString("es-AR")}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="open saved-open"
-                      onClick={() => setSelected(recipe)}
-                    >
-                      Abrir receta <span>→</span>
-                    </button>
-                  </article>
-                ))}
-              </div>
+                  </nav>
+                )}
+              </>
             ) : (
               <div className="saved-no-results">
                 <span>⌕</span>
