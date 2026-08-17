@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+
+# Local tooling
+.vercel/
+.npm-cache/
+.task-home/
+
+# Secrets and local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Keep the public template in version control
+!.env.example
+
+# Logs and operating-system files
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

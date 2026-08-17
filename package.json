@@ -1,0 +1,32 @@
+{
+  "name": "que-cocino-hoy",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Aplicación de recetas personalizadas con inteligencia artificial.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run format:check && npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "firebase": "^12.17.1",
+    "firebase-admin": "^14.2.0",
+    "next": "^16.3.1",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
