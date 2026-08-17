@@ -19,6 +19,14 @@ type Recipe = {
   safetyNote: string;
   emoji: string;
 };
+type SavedRecipe = Recipe & {
+  id: string;
+  mealCategory: string;
+  dietCategory: string;
+  sourceIngredients: string[];
+  sourcePreferences: string;
+  savedAt: string;
+};
 const quick = [
   "Huevos",
   "Arroz",
@@ -71,10 +79,11 @@ export default function Home() {
   const [image, setImage] = useState<string | null>(null),
     [imageName, setImageName] = useState("");
   const [recipes, setRecipes] = useState<Recipe[]>([]),
-    [selected, setSelected] = useState<Recipe | null>(null);
+    [selected, setSelected] = useState<Recipe | SavedRecipe | null>(null);
   const [loading, setLoading] = useState(false),
     [error, setError] = useState("");
   const [token, setToken] = useState<string | null>(null),
+    [userId, setUserId] = useState(""),
     [authReady, setAuthReady] = useState(false);
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
@@ -84,7 +93,11 @@ export default function Home() {
     [name, setName] = useState(""),
     [confirmPassword, setConfirmPassword] = useState(""),
     [accepted, setAccepted] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>([]),
+  const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]),
+    [savedSearch, setSavedSearch] = useState(""),
+    [savedMeal, setSavedMeal] = useState("Todas"),
+    [savedDiet, setSavedDiet] = useState("Todas"),
+    [savedSort, setSavedSort] = useState("recent"),
     resultsRef = useRef<HTMLElement>(null);
   const [loginSlide, setLoginSlide] = useState(0);
 
@@ -101,16 +114,32 @@ export default function Home() {
           body: JSON.stringify({ idToken: saved }),
         },
       )
-        .then((response) => {
-          if (response.ok) setToken(saved);
-          else localStorage.removeItem("firebase_id_token");
+        .then(async (response) => {
+          if (response.ok) {
+            const data = await response.json();
+            setToken(saved);
+            setUserId(data.users?.[0]?.localId || "");
+          } else localStorage.removeItem("firebase_id_token");
         })
         .finally(() => setAuthReady(true));
     }
-    setFavorites(JSON.parse(localStorage.getItem("recipe_favorites") || "[]"));
     if ("serviceWorker" in navigator)
       navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
+  useEffect(() => {
+    if (!userId) {
+      setSavedRecipes([]);
+      return;
+    }
+    try {
+      const storedRecipes = JSON.parse(
+        localStorage.getItem(`saved_recipes_v2:${userId}`) || "[]",
+      );
+      if (Array.isArray(storedRecipes)) setSavedRecipes(storedRecipes);
+    } catch {
+      localStorage.removeItem(`saved_recipes_v2:${userId}`);
+    }
+  }, [userId]);
   useEffect(() => {
     const timer = window.setInterval(
       () => setLoginSlide((current) => (current + 1) % loginSlides.length),
@@ -148,12 +177,69 @@ export default function Home() {
     };
     reader.readAsDataURL(file);
   }
-  function favorite(name: string) {
-    setFavorites((old) => {
-      const next = old.includes(name)
-        ? old.filter((x) => x !== name)
-        : [...old, name];
-      localStorage.setItem("recipe_favorites", JSON.stringify(next));
+  function recipeIdentity(
+    recipe: Recipe,
+    mealCategory = meal,
+    dietCategory = diet,
+  ) {
+    return `${recipe.name}|${mealCategory}|${dietCategory}`.toLowerCase();
+  }
+  function isSaved(recipe: Recipe, mealCategory = meal, dietCategory = diet) {
+    const identity = recipeIdentity(recipe, mealCategory, dietCategory);
+    return savedRecipes.some(
+      (saved) =>
+        recipeIdentity(saved, saved.mealCategory, saved.dietCategory) ===
+        identity,
+    );
+  }
+  function toggleSaved(
+    recipe: Recipe,
+    context?: Pick<
+      SavedRecipe,
+      | "id"
+      | "mealCategory"
+      | "dietCategory"
+      | "sourceIngredients"
+      | "sourcePreferences"
+    >,
+  ) {
+    setSavedRecipes((current) => {
+      const mealCategory = context?.mealCategory || meal;
+      const dietCategory = context?.dietCategory || diet;
+      const identity = recipeIdentity(recipe, mealCategory, dietCategory);
+      const existing = current.find(
+        (saved) =>
+          saved.id === context?.id ||
+          recipeIdentity(saved, saved.mealCategory, saved.dietCategory) ===
+            identity,
+      );
+      const next = existing
+        ? current.filter((saved) => saved.id !== existing.id)
+        : [
+            {
+              ...recipe,
+              id: crypto.randomUUID(),
+              mealCategory,
+              dietCategory,
+              sourceIngredients: context?.sourceIngredients || [...ingredients],
+              sourcePreferences: context?.sourcePreferences || preferences,
+              savedAt: new Date().toISOString(),
+            },
+            ...current,
+          ];
+      if (userId) {
+        try {
+          localStorage.setItem(
+            `saved_recipes_v2:${userId}`,
+            JSON.stringify(next),
+          );
+        } catch {
+          setError(
+            "No pudimos guardar la receta porque el dispositivo no tiene espacio disponible.",
+          );
+          return current;
+        }
+      }
       return next;
     });
   }
@@ -201,6 +287,7 @@ export default function Home() {
         );
       localStorage.setItem("firebase_id_token", data.idToken);
       setToken(data.idToken);
+      setUserId(data.localId || "");
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -214,6 +301,7 @@ export default function Home() {
   function logout() {
     localStorage.removeItem("firebase_id_token");
     setToken(null);
+    setUserId("");
   }
   async function googleLogin() {
     setLoginLoading(true);
@@ -226,6 +314,7 @@ export default function Home() {
         idToken = await result.user.getIdToken();
       localStorage.setItem("firebase_id_token", idToken);
       setToken(idToken);
+      setUserId(result.user.uid);
     } catch {
       setError("No pudimos iniciar sesión con Google.");
     } finally {
@@ -320,6 +409,28 @@ export default function Home() {
       setLoading(false);
     }
   }
+
+  const savedMeals = [...new Set(savedRecipes.map((r) => r.mealCategory))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "es"));
+  const savedDiets = [...new Set(savedRecipes.map((r) => r.dietCategory))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "es"));
+  const visibleSavedRecipes = savedRecipes
+    .filter(
+      (recipe) =>
+        (savedMeal === "Todas" || recipe.mealCategory === savedMeal) &&
+        (savedDiet === "Todas" || recipe.dietCategory === savedDiet) &&
+        (!savedSearch.trim() ||
+          `${recipe.name} ${recipe.summary} ${recipe.sourceIngredients.join(" ")}`
+            .toLowerCase()
+            .includes(savedSearch.trim().toLowerCase())),
+    )
+    .sort((a, b) =>
+      savedSort === "name"
+        ? a.name.localeCompare(b.name, "es")
+        : b.savedAt.localeCompare(a.savedAt),
+    );
 
   if (!authReady)
     return (
@@ -493,6 +604,11 @@ export default function Home() {
           </span>
         </a>
         <div className="account-actions">
+          <a className="saved-nav" href="#guardadas">
+            <span aria-hidden="true">♥</span>
+            Mis recetas
+            <b>{savedRecipes.length}</b>
+          </a>
           <button className="premium-button" onClick={subscribe}>
             <img src="/icon-premium.svg" alt="" />
             Premium · $15.000/mes
@@ -828,10 +944,18 @@ export default function Home() {
                 </div>
                 <button
                   type="button"
-                  className={`heart ${favorites.includes(r.name) ? "on" : ""}`}
-                  onClick={() => favorite(r.name)}
+                  className={`heart ${isSaved(r) ? "on" : ""}`}
+                  onClick={() => toggleSaved(r)}
+                  aria-label={
+                    isSaved(r)
+                      ? `Quitar ${r.name} de mis recetas`
+                      : `Guardar ${r.name} en mis recetas`
+                  }
+                  title={
+                    isSaved(r) ? "Quitar de mis recetas" : "Guardar receta"
+                  }
                 >
-                  ♥
+                  {isSaved(r) ? "♥" : "♡"}
                 </button>
                 <h3>{r.name}</h3>
                 <p>{r.summary}</p>
@@ -859,6 +983,147 @@ export default function Home() {
           </div>
         </section>
       )}
+      <section className="saved-library" id="guardadas">
+        <div className="saved-library-head">
+          <div>
+            <span className="eyebrow">TU RECETARIO PERSONAL</span>
+            <h2>Mis recetas guardadas</h2>
+            <p>
+              Encontralas por momento, alimentación o ingrediente, incluso
+              después de generar nuevas opciones.
+            </p>
+          </div>
+          <b>
+            {savedRecipes.length}{" "}
+            {savedRecipes.length === 1 ? "receta" : "recetas"}
+          </b>
+        </div>
+
+        {savedRecipes.length > 0 ? (
+          <>
+            <div
+              className="saved-tools"
+              aria-label="Filtros de recetas guardadas"
+            >
+              <label className="saved-search">
+                <span>Buscar</span>
+                <input
+                  type="search"
+                  value={savedSearch}
+                  onChange={(event) => setSavedSearch(event.target.value)}
+                  placeholder="Nombre o ingrediente"
+                />
+              </label>
+              <label>
+                <span>Momento</span>
+                <select
+                  value={savedMeal}
+                  onChange={(event) => setSavedMeal(event.target.value)}
+                >
+                  <option>Todas</option>
+                  {savedMeals.map((category) => (
+                    <option key={category}>{category}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Alimentación</span>
+                <select
+                  value={savedDiet}
+                  onChange={(event) => setSavedDiet(event.target.value)}
+                >
+                  <option>Todas</option>
+                  {savedDiets.map((category) => (
+                    <option key={category}>{category}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Ordenar</span>
+                <select
+                  value={savedSort}
+                  onChange={(event) => setSavedSort(event.target.value)}
+                >
+                  <option value="recent">Más recientes</option>
+                  <option value="name">Nombre A–Z</option>
+                </select>
+              </label>
+            </div>
+
+            {visibleSavedRecipes.length > 0 ? (
+              <div className="saved-grid">
+                {visibleSavedRecipes.map((recipe) => (
+                  <article className="saved-card" key={recipe.id}>
+                    <div className="saved-card-top">
+                      <span className="saved-emoji">
+                        {recipe.emoji || "🍽️"}
+                      </span>
+                      <div className="saved-card-actions">
+                        <button
+                          type="button"
+                          onClick={() => toggleSaved(recipe, recipe)}
+                          aria-label={`Quitar ${recipe.name} de mis recetas`}
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                    <div className="saved-tags">
+                      <span>{recipe.mealCategory}</span>
+                      <span>{recipe.dietCategory}</span>
+                    </div>
+                    <h3>{recipe.name}</h3>
+                    <p>{recipe.summary}</p>
+                    <div className="saved-card-meta">
+                      <span>◷ {recipe.minutes} min</span>
+                      <span>♙ {recipe.servings}</span>
+                      <span>
+                        Guardada el{" "}
+                        {new Date(recipe.savedAt).toLocaleDateString("es-AR")}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="open saved-open"
+                      onClick={() => setSelected(recipe)}
+                    >
+                      Abrir receta <span>→</span>
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="saved-no-results">
+                <span>⌕</span>
+                <h3>No encontramos recetas con esos filtros</h3>
+                <p>Probá otra alimentación, momento o palabra de búsqueda.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedSearch("");
+                    setSavedMeal("Todas");
+                    setSavedDiet("Todas");
+                  }}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="saved-empty">
+            <span aria-hidden="true">♡</span>
+            <div>
+              <h3>Tu recetario está listo para empezar</h3>
+              <p>
+                Generá una receta y tocá el corazón para conservar todos sus
+                ingredientes, reemplazos y pasos.
+              </p>
+            </div>
+            <a href="#crear">Crear mi primera receta</a>
+          </div>
+        )}
+      </section>
       <footer className="site-footer">
         <a className="brand" href="#inicio">
           <BrandIcon />
@@ -953,7 +1218,30 @@ export default function Home() {
                 ♙ <b>{selected.servings} porciones</b>
               </span>
             </div>
-            {image && (
+            <button
+              type="button"
+              className={`detail-save ${
+                "id" in selected
+                  ? savedRecipes.some((recipe) => recipe.id === selected.id)
+                    ? "saved"
+                    : ""
+                  : isSaved(selected)
+                    ? "saved"
+                    : ""
+              }`}
+              onClick={() =>
+                toggleSaved(selected, "id" in selected ? selected : undefined)
+              }
+            >
+              {"id" in selected
+                ? savedRecipes.some((recipe) => recipe.id === selected.id)
+                  ? "♥ Guardada en Mis recetas"
+                  : "♡ Guardar nuevamente"
+                : isSaved(selected)
+                  ? "♥ Guardada en Mis recetas"
+                  : "♡ Guardar en Mis recetas"}
+            </button>
+            {image && !("id" in selected) && (
               <div className="detail-photo">
                 <img src={image} alt={`Referencia para ${selected.name}`} />
                 <small>Foto del plato que querés lograr</small>
