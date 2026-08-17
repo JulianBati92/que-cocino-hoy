@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { DocumentReference } from "firebase-admin/firestore";
-import { adminAuth, adminDb, firebaseUser } from "@/lib/firebase-admin";
+import {
+  adminAuth,
+  adminDb,
+  firebaseUser,
+  isAdminEmail,
+} from "@/lib/firebase-admin";
 export const runtime = "nodejs";
 const schema = {
   type: "object",
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
           membership.expiresAt?.toDate?.() ||
           new Date(membership.expiresAt || 0);
         const premium =
-          user.email === process.env.ADMIN_EMAIL ||
+          isAdminEmail(user.email) ||
           membership.plan === "admin" ||
           (membership.plan === "premium" && expires > new Date());
         const freeUsed = Number(membership.freeUsed || 0);
@@ -152,7 +157,7 @@ export async function POST(request: NextRequest) {
         claims = account.customClaims || {};
       const expiresAt = Number(claims.membershipExpiresAt || 0);
       const premium =
-        user.email === process.env.ADMIN_EMAIL ||
+        isAdminEmail(user.email) ||
         claims.membershipPlan === "admin" ||
         (claims.membershipPlan === "premium" && expiresAt > Date.now());
       const freeUsed = Number(claims.recipeFreeUsed || 0);

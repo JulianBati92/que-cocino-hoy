@@ -27,6 +27,14 @@ export function adminDb() {
 export function adminAuth() {
   return getAuth(app());
 }
+export function isAdminEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  return (process.env.ADMIN_EMAIL || "")
+    .split(",")
+    .map((adminEmail) => adminEmail.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(normalizedEmail);
+}
 export async function firebaseUser(request: Request) {
   const token = request.headers
     .get("authorization")
