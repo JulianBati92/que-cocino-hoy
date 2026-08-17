@@ -5,7 +5,7 @@
   "description": "Aplicación de recetas personalizadas con inteligencia artificial.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

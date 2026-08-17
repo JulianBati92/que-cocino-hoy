@@ -281,7 +281,22 @@ export default function Home() {
           image,
         }),
       });
-      const data = await response.json();
+      const responseBody = await response.text();
+      let data: {
+        error?: string;
+        upgrade?: boolean;
+        recipes?: Recipe[];
+        freeRemaining?: number | null;
+      } = {};
+      if (responseBody) {
+        try {
+          data = JSON.parse(responseBody);
+        } catch {
+          throw new Error(
+            "El servidor no pudo completar la solicitud. Intentá nuevamente en unos minutos.",
+          );
+        }
+      }
       if (response.status === 401) logout();
       if (response.status === 402 || data.upgrade) {
         setUpgradeOpen(true);
@@ -289,6 +304,8 @@ export default function Home() {
       }
       if (!response.ok)
         throw new Error(data.error || "No se pudo crear la receta.");
+      if (!Array.isArray(data.recipes))
+        throw new Error("No pudimos generar las recetas. Intentá nuevamente.");
       setRecipes(data.recipes || []);
       setTimeout(
         () => resultsRef.current?.scrollIntoView({ behavior: "smooth" }),
